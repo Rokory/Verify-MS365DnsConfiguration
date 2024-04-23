@@ -1,5 +1,5 @@
 
-#Requires -Modules AzureAd, DnsClient
+#Requires -Modules Microsoft.Graph.Identity.DirectoryManagement, DnsClient
 
 <#
 .SYNOPSIS
@@ -12,7 +12,7 @@
 .PARAMETER Server
     The DNS server to use for verification. Default is the default DNS server of the system.
 .EXAMPLE
-    PS C:\> .\Verify-MS365DnsConfiguration.ps1 -Name example.com | Format-List
+    PS C:\> .\Verify-MS365DnsConfiguration.ps1 -DomainId example.com | Format-List
     Verifies the DNS entries for the domain example.com
 .INPUTS
 .OUTPUTS
@@ -28,9 +28,9 @@
 [CmdletBinding()]
 param (
     [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)]
-    [Alias('Name', 'Domain')]
+    [Alias('Name', 'Domain', 'DomainName')]
     [string[]]
-    $DomainName,
+    $DomainId,
 
     [string]
     $Server
@@ -75,7 +75,7 @@ process {
 
     #region Processing
 
-    foreach ($name in $DomainName) {
+    foreach ($domainName in $DomainId) {
         #region Initialization
         [int] $mismatchCount = 0
         #endregion
@@ -83,10 +83,20 @@ process {
         #region Input
 
         Write-Verbose -Message `
-            "Getting service configuration records (desired configuration) for domain $name."
-        $serviceConfigurationRecords =  `
-            Get-AzureADDomainServiceConfigurationRecord -Name $name
-
+            "Getting service configuration records (desired configuration) for domain $domainName."
+        try {
+            $serviceConfigurationRecords =  `
+                Get-MgDomainServiceConfigurationRecord `
+                    -DomainId $domainName -ErrorAction Stop
+        }
+        catch [Microsoft.Graph.PowerShell.AuthenticationException], [System.Security.Authentication.AuthenticationException] {
+            Write-Error 'Authentication needed. Please call Connect-MgGraph -Scopes Domain.Read.All'
+            throw $newError
+        }
+        catch {
+            Write-Verbose "Error class: $($PSItem.Exception.GetType())"
+            throw
+        }
         #endregion Input
 
         #region Processing
@@ -132,55 +142,78 @@ process {
             if (-not $misMatch) {
                 switch ($serviceConfigurationRecord.RecordType) {
                     'Mx' {
-                        $misMatch = $serviceConfigurationRecord.MailExchange `
+                        $misMatch = $serviceConfigurationRecord.AdditionalProperties.mailExchange `
                             -ne $dnsName.NameExchange
                         if ($misMatch) {
                             Write-Warning `
-                                "MX record $($serviceConfigurationRecord.Label) should point to $($serviceConfigurationRecord.MailExchange), but points to $($dnsName.NameExchange)"
+                                "MX record $(
+                                    $serviceConfigurationRecord.Label
+                                ) should point to $(
+                                    $serviceConfigurationRecord.AdditionalProperties.mailExchange
+                                ), but points to $($dnsName.NameExchange)"
                         }
                     }
                     'Txt' {
                         $misMatch = `
-                            $serviceConfigurationRecord.Text -notin $dnsName.Strings
+                            $serviceConfigurationRecord.AdditionalProperties.text -notin $dnsName.Strings
                         if ($misMatch) {
                             Write-Warning `
-                                "TXT record $($dnsName.Name) does not contain $($serviceConfigurationRecord.Text)"
+                                "TXT record $($dnsName.Name) does not contain $(
+                                    $serviceConfigurationRecord.AdditionalProperties.text
+                                )"
                         }
                     }
                     'CName' {
-                        $misMatch = $serviceConfigurationRecord.CanonicalName `
+                        $misMatch = $serviceConfigurationRecord.AdditionalProperties.canonicalName `
                             -ne $dnsName.NameHost
                         if ($misMatch) {
                             Write-Warning `
-                                "CNAME record $($serviceConfigurationRecord.Label) should point to $($serviceConfigurationRecord.CanonicalName), but points to $($dnsName.NameHost)"                
+                                "CNAME record $(
+                                    $serviceConfigurationRecord.Label
+                                ) should point to $(
+                                    $serviceConfigurationRecord.AdditionalProperties.canonicalName
+                                ), but points to $($dnsName.NameHost)"                
                         }
                     }
                     'Srv' {
                         $misMatch = 
-                            $serviceConfigurationRecord.NameTarget `
+                            $serviceConfigurationRecord.AdditionalProperties.nameTarget `
                             -ne $dnsName.NameTarget
-                        $warning = "SRV record $($serviceConfigurationRecord.Label)"
+                        $warning = "SRV record $(
+                            $serviceConfigurationRecord.Label)
+                        "
                         if ($misMatch) {
                             Write-Warning `
-                                "$warning NameTarget should be $($serviceConfigurationRecord.NameTarget), but is $($dnsName.NameTarget)"                
+                                "$warning NameTarget should be $(
+                                    $serviceConfigurationRecord.AdditionalProperties.nameTarget
+                                ), but is $($dnsName.NameTarget)"                
                         }
                         $misMatch = $misMatch `
-                            -or $serviceConfigurationRecord.Port -ne $dnsName.Port
+                            -or $serviceConfigurationRecord.AdditionalProperties.port `
+                                -ne $dnsName.Port
                         if ($misMatch) {
                             Write-Warning `
-                                "$warning Port should be $($serviceConfigurationRecord.Port), but is $($dnsName.Port)"
+                                "$warning Port should be $(
+                                    $serviceConfigurationRecord.AdditionalProperties.port
+                                ), but is $($dnsName.Port)"
                         }
                         $misMatch = $misMatch `
-                            -or $serviceConfigurationRecord.Priority -ne $dnsName.Priority
+                            -or $serviceConfigurationRecord.AdditionalProperties.priority `
+                                -ne $dnsName.Priority
                         if ($misMatch) {
                             Write-Warning `
-                                "$warning Priority should be $($serviceConfigurationRecord.Priority), but is $($dnsName.Priority)"
+                                "$warning Priority should be $(
+                                    $serviceConfigurationRecord.AdditionalProperties.priority
+                                ), but is $($dnsName.Priority)"
                         }
                         $misMatch = $misMatch `
-                            -or $serviceConfigurationRecord.Weight -ne $dnsName.Weight
+                            -or $serviceConfigurationRecord.AdditionalProperties.weight `
+                                -ne $dnsName.Weight
                         if ($misMatch) {
                             Write-Warning `
-                                "$warning Weight should be $($serviceConfigurationRecord.Weight), but is $($dnsName.Weight)"
+                                "$warning Weight should be $(
+                                    $serviceConfigurationRecord.AdditionalProperties.weight
+                                ), but is $($dnsName.Weight)"
                         }
                     }
                     Default {}
@@ -194,7 +227,7 @@ process {
             if ($misMatch) {
                 $mismatchCount++
                 [MS365DnsConfigurationVerificationResult]::new(
-                    $name, $serviceConfigurationRecord, $dnsName
+                    $domainName, $serviceConfigurationRecord, $dnsName
                 )
             }
 
@@ -206,7 +239,7 @@ process {
         #region Output
         if ($mismatchCount -eq 0) {
             Write-Verbose -Message `
-                "All records for domain $name are fine. Good job!"
+                "All records for domain $domainName are fine. Good job!"
         }
         #endregion Output
         

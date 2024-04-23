@@ -19,7 +19,7 @@ The DNS server to use for verification. Default is the default DNS server of the
 ## Example
 
 ```powershell
-.\Verify-MS365DnsConfiguration.ps1 -Name example.com | Format-List
+.\Verify-MS365DnsConfiguration.ps1 -DomainId example.com | Format-List
 ```
 
 Verifies the DNS entries for the domain example.com
