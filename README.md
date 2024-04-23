@@ -18,8 +18,8 @@ The DNS server to use for verification. Default is the default DNS server of the
 
 ## Example
 
-```
-PS C:\> .\Verify-MS365DnsConfiguration.ps1 -Name example.com
+```powershell
+.\Verify-MS365DnsConfiguration.ps1 -Name example.com | Format-List
 ```
 
 Verifies the DNS entries for the domain example.com

@@ -12,7 +12,7 @@
 .PARAMETER Server
     The DNS server to use for verification. Default is the default DNS server of the system.
 .EXAMPLE
-    PS C:\> .\Verify-MS365DnsConfiguration.ps1 -Name example.com
+    PS C:\> .\Verify-MS365DnsConfiguration.ps1 -Name example.com | Format-List
     Verifies the DNS entries for the domain example.com
 .INPUTS
 .OUTPUTS
@@ -104,22 +104,19 @@ process {
             Write-Verbose -Message `
                 "Resolving $($serviceConfigurationRecord.RecordType) record $($serviceConfigurationRecord.Label)"
 
-            if ($Server -eq '') {
-                $dnsName = Resolve-DnsName `
-                    -Type $serviceConfigurationRecord.RecordType `
-                    -Name $serviceConfigurationRecord.Label `
-                    -ErrorAction SilentlyContinue `
-                    -Verbose:$false
+            $commonResolveDnsNameParameters = @{
+                ErrorAction = 'SilentlyContinue'
+                Verbose = $false
             }
 
-            if ($Server -ne '') {
-                $dnsName = Resolve-DnsName `
-                    -Type $serviceConfigurationRecord.RecordType `
-                    -Name $serviceConfigurationRecord.Label `
-                    -Server $Server `
-                    -ErrorAction SilentlyContinue `
-                    -Verbose:$false
+            if (-not [String]::IsNullOrWhiteSpace($Server)) {
+                $commonResolveDnsNameParameters.Add('Server', $Server)
             }
+            
+            $dnsName = Resolve-DnsName `
+                -Type $serviceConfigurationRecord.RecordType `
+                -Name $serviceConfigurationRecord.Label `
+                @commonResolveDnsNameParameters
             
             #endregion Input
             
