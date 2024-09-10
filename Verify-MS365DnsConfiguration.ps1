@@ -62,11 +62,9 @@ begin {
             $this.DomainName = $DomainName
             $this.ShouldBe = $ShouldBe
             $this.Is = $Is
-            $this.Is = $this | Select-Object -ExpandProperty Is
+            # $this.Is = $this | Select-Object -ExpandProperty Is
         }
     }
-
-    # Connect-AzureAD
 }
 
 process {
@@ -133,16 +131,30 @@ process {
             #region Processing
 
             # Missing record
-            $misMatch = $null -eq $dnsName
+            $misMatch = ($null -eq $dnsName) `
+                -or ($serviceConfigurationRecord.RecordType -ne $dnsName.Type)
             if ($misMatch) {
-                Write-Warning "Missing record $serviceConfigurationRecord"
+                Write-Warning `
+                    "Missing $(
+                        $serviceConfigurationRecord.RecordType
+                    ) record $(
+                        $serviceConfigurationRecord.Label
+                    )"
+
+                    <#
+                        Because in some cases, we geg the SOA record
+                        instead of the requested record,
+                        we set the result to $null
+                    #>
+                    $dnsName = $null
             }
 
             # Mismatched records
             if (-not $misMatch) {
                 switch ($serviceConfigurationRecord.RecordType) {
                     'Mx' {
-                        $misMatch = $serviceConfigurationRecord.AdditionalProperties.mailExchange `
+                        $misMatch = `
+                            $serviceConfigurationRecord.AdditionalProperties.mailExchange `
                             -ne $dnsName.NameExchange
                         if ($misMatch) {
                             Write-Warning `
@@ -155,16 +167,20 @@ process {
                     }
                     'Txt' {
                         $misMatch = `
-                            $serviceConfigurationRecord.AdditionalProperties.text -notin $dnsName.Strings
+                            $serviceConfigurationRecord.AdditionalProperties.text `
+                            -notin $dnsName.Strings
                         if ($misMatch) {
                             Write-Warning `
-                                "TXT record $($dnsName.Name) does not contain $(
+                                "TXT record $(
+                                    $dnsName.Name
+                                ) does not contain $(
                                     $serviceConfigurationRecord.AdditionalProperties.text
                                 )"
                         }
                     }
                     'CName' {
-                        $misMatch = $serviceConfigurationRecord.AdditionalProperties.canonicalName `
+                        $misMatch = `
+                            $serviceConfigurationRecord.AdditionalProperties.canonicalName `
                             -ne $dnsName.NameHost
                         if ($misMatch) {
                             Write-Warning `
