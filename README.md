@@ -38,4 +38,9 @@ A list of missing or mismatched DNS entries.
 
 ## Notes
 
-Authenticate to Azure AD first using `Connect-AzureAD`.
+Authenticate to Graph first using `Connect-MgGraph -Scopes Domain.Read.All`.
+
+## Known issues
+
+In some cases a blank line appears between warnings.
+Although authenticated first like described in the notes, you must authenticate a second time.

@@ -22,7 +22,7 @@
     ShouldBe contains the object returned by Get-AzureADDomainServiceConfigurationRecord.
     Is contains the object returned by Resolve-DnsName. If the name cannot be resolved, it contains $null.
 .NOTES
-    Authenticate to Azure AD first using Connect-AzureAD.
+    Authenticate to Graph first using Connect-MgGraph -Scopes Domain.Read.All
 #>
 
 [CmdletBinding()]
